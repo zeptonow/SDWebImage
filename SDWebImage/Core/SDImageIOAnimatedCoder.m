@@ -47,6 +47,8 @@ static CGImageRef __nullable SDCGImageCreateCopy(CGImageRef cg_nullable image) {
     return newImage;
 }
 
+static NSLock *kImageIOCoderLock;
+
 @interface SDImageIOCoderFrame : NSObject
 
 @property (nonatomic, assign) NSUInteger index; // Frame index (zero based)
@@ -230,6 +232,11 @@ static CGImageRef __nullable SDCGImageCreateCopy(CGImageRef cg_nullable image) {
             };
         }
     }
+
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
+        kImageIOCoderLock = [[NSLock alloc] init];
+    });
     // Parse the image properties
     NSDictionary *properties = (__bridge_transfer NSDictionary *)CGImageSourceCopyPropertiesAtIndex(source, index, NULL);
     CGFloat pixelWidth = [properties[(__bridge NSString *)kCGImagePropertyPixelWidth] doubleValue];
@@ -268,6 +275,7 @@ static CGImageRef __nullable SDCGImageCreateCopy(CGImageRef cg_nullable image) {
         imageRef = CGImageSourceCreateThumbnailAtIndex(source, index, (__bridge CFDictionaryRef)[decodingOptions copy]);
     }
     if (!imageRef) {
+        [kImageIOCoderLock unlock];
         return nil;
     }
     BOOL isDecoded = NO;
@@ -328,6 +336,7 @@ static CGImageRef __nullable SDCGImageCreateCopy(CGImageRef cg_nullable image) {
     UIImage *image = [[UIImage alloc] initWithCGImage:imageRef scale:scale orientation:exifOrientation];
 #endif
     CGImageRelease(imageRef);
+    [kImageIOCoderLock unlock];
     image.sd_isDecoded = isDecoded;
     
     return image;
